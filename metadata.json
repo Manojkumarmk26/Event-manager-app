@@ -1,0 +1,7 @@
+{
+  "name": "Copy of EventHorizon - All-in-One Event Management",
+  "description": "A comprehensive marketplace for clients to book photographers, caterers, venues, and makeup artists, featuring AI planning tools and vendor dashboards.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
