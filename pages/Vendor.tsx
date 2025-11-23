@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserRole, Booking, VendorProfile, CalendarEvent, MenuItem, User } from '../types';
-import { MOCK_VENDORS, MOCK_BOOKINGS, updateBookingStatus, addVendorPackage, addVendorImage, removeVendorImage, toggleBlockedDate, updateBooking, checkAvailability, addVendorMenuItem, toggleVendorAmenity, MOCK_USERS } from '../services/mockData';
+import { UserRole, Booking, VendorProfile, CalendarEvent, MenuItem, User, Quotation } from '../types';
+import { MOCK_VENDORS, MOCK_BOOKINGS, updateBookingStatus, addVendorPackage, addVendorImage, removeVendorImage, toggleBlockedDate, updateBooking, checkAvailability, addVendorMenuItem, toggleVendorAmenity, MOCK_USERS, updateVendor, updateUser, MOCK_QUOTATIONS, replyToQuotation } from '../services/mockData';
 import { Card, Badge, Button, Modal, Input, Tabs, LanguageSelector, EventCalendar, Select, NotificationBell, ProfileHeader, InfoRow } from '../components/Shared';
-import { Calendar as CalendarIcon, IndianRupee, Users, CheckSquare, Settings, Image, BarChart2, Plus, X, Clock, CheckCircle, XCircle, Trash2, Utensils, Home, LogOut, User as UserIcon, Edit2 } from 'lucide-react';
+import { Calendar as CalendarIcon, IndianRupee, Users, CheckSquare, Settings, Image, BarChart2, Plus, X, Clock, CheckCircle, XCircle, Trash2, Utensils, Home, LogOut, User as UserIcon, Edit2, MessageSquare, Send } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNotification } from '../contexts/NotificationContext';
 
@@ -37,6 +37,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({ role }) => {
                     <nav className="space-y-1">
                      {[
                         { id: 'overview', label: t('overview'), icon: BarChart2 },
+                        { id: 'requests', label: 'Inquiries', icon: MessageSquare },
                         { id: 'bookings', label: t('bookings'), icon: CalendarIcon },
                         { id: 'profile', label: t('profile'), icon: UserIcon }, // Replaces Services/Portfolio with unified Profile view
                         { id: 'calendar', label: t('calendar'), icon: Clock },
@@ -77,6 +78,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({ role }) => {
             {/* Main Content */}
             <div className="flex-1 overflow-y-auto p-8 md:p-12">
                 {activeTab === 'overview' && <Overview role={role} vendorId={vendorProfile.id} key={refreshKey} />}
+                {activeTab === 'requests' && <InquiriesManager vendorId={vendorProfile.id} onUpdate={handleDataUpdate} key={refreshKey} />}
                 {activeTab === 'bookings' && <BookingsManager role={role} vendorId={vendorProfile.id} onUpdate={handleDataUpdate} key={refreshKey} />}
                 {activeTab === 'profile' && <UnifiedVendorProfile user={user} vendor={vendorProfile} onUpdate={handleDataUpdate} key={refreshKey} />}
                 {activeTab === 'calendar' && <CalendarManager vendor={vendorProfile} onUpdate={handleDataUpdate} key={refreshKey} />}
@@ -92,6 +94,7 @@ const Overview: React.FC<{ role: string; vendorId: string }> = ({ role, vendorId
     const totalEarnings = myBookings.filter(b => b.status === 'confirmed' || b.status === 'completed').reduce((acc, b) => acc + b.amount, 0);
     const pendingCount = myBookings.filter(b => b.status === 'pending').length;
     const confirmedCount = myBookings.filter(b => b.status === 'confirmed').length;
+    const inquiriesCount = MOCK_QUOTATIONS.filter(q => q.vendorId === vendorId && q.status === 'pending').length;
     const { t } = useLanguage();
 
     return (
@@ -104,7 +107,7 @@ const Overview: React.FC<{ role: string; vendorId: string }> = ({ role, vendorId
                 <Badge color="gray" className="px-3 py-1.5 text-sm"><Clock className="w-3 h-3 mr-2" /> {new Date().toLocaleDateString()}</Badge>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group hover:shadow-md transition-all">
                     <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
                         <IndianRupee className="w-24 h-24 text-indigo-600" />
@@ -113,6 +116,17 @@ const Overview: React.FC<{ role: string; vendorId: string }> = ({ role, vendorId
                     <p className="text-4xl font-extrabold text-indigo-600 mt-2">₹{totalEarnings.toLocaleString()}</p>
                     <div className="mt-4 text-sm text-green-600 font-medium flex items-center">
                         <span className="bg-green-100 px-1.5 py-0.5 rounded mr-2">+12%</span> from last month
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group hover:shadow-md transition-all">
+                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <MessageSquare className="w-24 h-24 text-blue-500" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-400 uppercase tracking-wide">Inquiries</p>
+                    <p className="text-4xl font-extrabold text-blue-500 mt-2">{inquiriesCount}</p>
+                     <div className="mt-4 text-sm text-blue-600 font-medium">
+                        Pending Quotes
                     </div>
                 </div>
 
@@ -142,10 +156,140 @@ const Overview: React.FC<{ role: string; vendorId: string }> = ({ role, vendorId
     );
 };
 
+const InquiriesManager: React.FC<{ vendorId: string; onUpdate: () => void }> = ({ vendorId, onUpdate }) => {
+    const inquiries = MOCK_QUOTATIONS.filter(q => q.vendorId === vendorId);
+    const [replyText, setReplyText] = useState('');
+    const [replyAmount, setReplyAmount] = useState<number>(0);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const { t } = useLanguage();
+    const { addToast } = useNotification();
+
+    const handleReply = () => {
+        if(selectedId) {
+            replyToQuotation(selectedId, replyText, replyAmount);
+            addToast('Reply Sent', 'Client has been notified.', 'success');
+            setReplyText('');
+            setReplyAmount(0);
+            setSelectedId(null);
+            onUpdate();
+        }
+    }
+
+    return (
+        <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
+            <h1 className="text-2xl font-bold text-slate-900">Inquiries & Quotes</h1>
+            
+            <div className="grid gap-6">
+                {inquiries.length === 0 && <div className="text-center p-12 text-slate-400 bg-white rounded-2xl border border-slate-200">No inquiries yet.</div>}
+                {inquiries.map(q => (
+                    <Card key={q.id} className="p-6">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900">Request from Client #{q.clientId.substr(0,4)}</h3>
+                                <p className="text-sm text-slate-500">{new Date(q.createdAt).toLocaleDateString()}</p>
+                            </div>
+                            <Badge color={q.status === 'pending' ? 'yellow' : 'green'}>{q.status}</Badge>
+                        </div>
+                        
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+                            <p className="text-slate-700 italic">"{q.details}"</p>
+                        </div>
+
+                        {q.status === 'pending' ? (
+                            <div className="space-y-4 pt-4 border-t border-slate-100">
+                                <h4 className="text-sm font-bold text-slate-900">Your Reply</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="md:col-span-2">
+                                        <Input 
+                                            placeholder="Message to client..." 
+                                            value={selectedId === q.id ? replyText : ''} 
+                                            onChange={e => { setSelectedId(q.id); setReplyText(e.target.value); }} 
+                                            className="mb-0"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <div className="flex gap-2">
+                                            <Input 
+                                                type="number"
+                                                placeholder="Amount" 
+                                                value={selectedId === q.id ? replyAmount : ''} 
+                                                onChange={e => { setSelectedId(q.id); setReplyAmount(Number(e.target.value)); }} 
+                                                className="mb-0"
+                                            />
+                                            <Button onClick={handleReply} disabled={selectedId !== q.id || !replyText} icon={Send}>Send</Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="pt-4 border-t border-slate-100">
+                                <p className="text-sm text-slate-500 font-bold mb-1">Your Response:</p>
+                                <p className="text-slate-700">{q.response}</p>
+                                {q.estimatedAmount && <p className="text-indigo-600 font-bold mt-1">Quoted: ₹{q.estimatedAmount}</p>}
+                            </div>
+                        )}
+                    </Card>
+                ))}
+            </div>
+        </div>
+    )
+}
+
 const UnifiedVendorProfile: React.FC<{ user: User; vendor: VendorProfile; onUpdate: () => void }> = ({ user, vendor, onUpdate }) => {
     const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState('details');
     const [isEditing, setIsEditing] = useState(false);
+    const { addToast } = useNotification();
+
+    // Form State
+    const [formData, setFormData] = useState({
+        name: user.name,
+        phone: user.phone || '',
+        city: user.city || vendor.location,
+        bio: user.bio || vendor.description,
+        companyName: vendor.companyName || '',
+        startingPrice: vendor.startingPrice,
+        capacity: vendor.capacity,
+        productsUsed: vendor.productsUsed?.join(', '),
+        venueType: vendor.venueType
+    });
+
+    useEffect(() => {
+        setFormData({
+            name: user.name,
+            phone: user.phone || '',
+            city: user.city || vendor.location,
+            bio: user.bio || vendor.description,
+            companyName: vendor.companyName || '',
+            startingPrice: vendor.startingPrice,
+            capacity: vendor.capacity,
+            productsUsed: vendor.productsUsed?.join(', '),
+            venueType: vendor.venueType
+        });
+    }, [user, vendor]);
+
+    const handleSave = () => {
+        updateUser(user.id, {
+            name: formData.name,
+            phone: formData.phone,
+            city: formData.city,
+            bio: formData.bio,
+            companyName: formData.companyName
+        });
+        updateVendor(vendor.id, {
+            name: formData.name,
+            location: formData.city,
+            description: formData.bio,
+            companyName: formData.companyName,
+            startingPrice: Number(formData.startingPrice),
+            capacity: Number(formData.capacity),
+            productsUsed: formData.productsUsed?.split(',').map(s => s.trim()),
+            venueType: formData.venueType
+        });
+        setIsEditing(false);
+        addToast('Profile Updated', 'Your profile details have been updated successfully.', 'success');
+        onUpdate();
+    }
 
     return (
         <div className="animate-fade-in max-w-5xl mx-auto">
@@ -188,19 +332,45 @@ const UnifiedVendorProfile: React.FC<{ user: User; vendor: VendorProfile; onUpda
                         <Card className="p-8">
                              <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-bold text-slate-900">Personal & Business Info</h3>
-                                <Button size="sm" variant="outline" icon={Edit2} onClick={() => setIsEditing(!isEditing)}>{t('edit_profile')}</Button>
+                                {!isEditing && <Button size="sm" variant="outline" icon={Edit2} onClick={() => setIsEditing(true)}>{t('edit_profile')}</Button>}
                             </div>
 
                             {isEditing ? (
                                 <div className="space-y-4">
-                                    <Input label={t('full_name')} defaultValue={user.name} />
-                                    <Input label={t('phone')} defaultValue={user.phone} />
-                                    <Input label={t('city')} defaultValue={user.city} />
-                                    <Input label={t('bio')} defaultValue={user.bio} />
-                                    <Input label={t('company_name')} defaultValue={vendor.companyName} />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <Input label={t('full_name')} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                        <Input label={t('phone')} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <Input label={t('company_name')} value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
+                                        <Input label={t('city')} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+                                    </div>
+                                    
+                                    <Input label="Starting Price (₹)" type="number" value={formData.startingPrice} onChange={e => setFormData({...formData, startingPrice: Number(e.target.value)})} />
+                                    
+                                    {vendor.role === 'venue' && (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <Input label="Capacity" type="number" value={formData.capacity} onChange={e => setFormData({...formData, capacity: Number(e.target.value)})} />
+                                            <Input label="Venue Type" value={formData.venueType} onChange={e => setFormData({...formData, venueType: e.target.value})} />
+                                        </div>
+                                    )}
+                                    
+                                    {vendor.role === 'makeup' && (
+                                        <Input label="Products Used" value={formData.productsUsed} onChange={e => setFormData({...formData, productsUsed: e.target.value})} />
+                                    )}
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">{t('bio')} / Description</label>
+                                        <textarea 
+                                            className="block w-full text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all outline-none h-32"
+                                            value={formData.bio}
+                                            onChange={e => setFormData({...formData, bio: e.target.value})}
+                                        />
+                                    </div>
+
                                     <div className="flex gap-2 justify-end mt-4">
                                         <Button variant="ghost" onClick={() => setIsEditing(false)}>{t('cancel')}</Button>
-                                        <Button onClick={() => setIsEditing(false)}>{t('save')}</Button>
+                                        <Button onClick={handleSave}>{t('save')}</Button>
                                     </div>
                                 </div>
                             ) : (
@@ -211,6 +381,7 @@ const UnifiedVendorProfile: React.FC<{ user: User; vendor: VendorProfile; onUpda
                                     <InfoRow label={t('phone')} value={user.phone || '-'} />
                                     <InfoRow label={t('city')} value={user.city || vendor.location} />
                                     <InfoRow label={t('languages_known')} value={user.languagesKnown?.join(', ') || 'English'} />
+                                    <InfoRow label={t('starting_at')} value={`₹${vendor.startingPrice}`} />
                                     
                                     {/* Role Specific Details */}
                                     {vendor.role === 'venue' && (

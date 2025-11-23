@@ -411,6 +411,35 @@ export const registerUser = (userData: Partial<User>, docs?: KYCDocuments): User
 
 // --- Data Management Services ---
 
+// UPDATE FUNCTIONS FOR INTERACTIVITY
+export const updateVendor = (vendorId: string, updates: Partial<VendorProfile>) => {
+    const vendor = MOCK_VENDORS.find(v => v.id === vendorId);
+    if (vendor) {
+        Object.assign(vendor, updates);
+        // Also update the User object for shared fields like name/city if present
+        const user = MOCK_USERS.find(u => u.id === vendorId);
+        if (user) {
+            if (updates.name) user.name = updates.name;
+            if (updates.location) user.city = updates.location; // Mapping location to city
+            if (updates.companyName) user.companyName = updates.companyName;
+        }
+    }
+};
+
+export const updateUser = (userId: string, updates: Partial<User>) => {
+    const user = MOCK_USERS.find(u => u.id === userId);
+    if (user) {
+        Object.assign(user, updates);
+        // Sync with vendor profile if user is a vendor
+        const vendor = MOCK_VENDORS.find(v => v.id === userId);
+        if (vendor) {
+            if (updates.name) vendor.name = updates.name;
+            if (updates.city) vendor.location = updates.city;
+            if (updates.companyName) vendor.companyName = updates.companyName;
+        }
+    }
+};
+
 export const updateVerificationStatus = (userId: string, status: VerificationStatus, reason?: string) => {
     const user = MOCK_USERS.find(u => u.id === userId);
     if (user) {
@@ -557,13 +586,24 @@ export const saveSearch = (userId: string, name: string, criteria: any) => {
 }
 
 export const addQuotation = (quotation: Omit<Quotation, 'id' | 'createdAt' | 'status'>) => {
+    const client = MOCK_USERS.find(u => u.id === quotation.clientId);
     MOCK_QUOTATIONS.push({
         ...quotation,
         id: Math.random().toString(36).substr(2, 9),
         status: 'pending',
         createdAt: Date.now()
     });
-    sendNotification(quotation.vendorId, 'New Quotation Request', 'A client requested a quote.', 'info');
+    sendNotification(quotation.vendorId, 'New Quotation Request', `Client ${client?.name || 'User'} requested a quote.`, 'info');
+}
+
+export const replyToQuotation = (quotationId: string, response: string, amount?: number) => {
+    const quote = MOCK_QUOTATIONS.find(q => q.id === quotationId);
+    if(quote) {
+        quote.response = response;
+        quote.estimatedAmount = amount;
+        quote.status = 'replied';
+        sendNotification(quote.clientId, 'Quote Received', `Vendor ${quote.vendorName} replied to your request.`, 'success');
+    }
 }
 
 export const addGuest = (clientId: string, name: string, count: number) => {

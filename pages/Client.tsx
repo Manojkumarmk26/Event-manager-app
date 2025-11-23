@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VendorProfile, Booking, Package, Quotation, SavedSearch, Guest, User } from '../types';
-import { MOCK_VENDORS, MOCK_BOOKINGS, MOCK_QUOTATIONS, MOCK_USERS, MOCK_GUESTS, addBooking, toggleFavorite, saveSearch, addQuotation, checkAvailability, addGuest, deleteGuest, updateGuestStatus } from '../services/mockData';
+import { MOCK_VENDORS, MOCK_BOOKINGS, MOCK_QUOTATIONS, MOCK_USERS, MOCK_GUESTS, addBooking, toggleFavorite, saveSearch, addQuotation, checkAvailability, updateUser } from '../services/mockData';
 import { Card, Badge, Button, Input, Select, Modal, Tabs, LanguageSelector, VoiceInput, TimeInput, EventCalendar, NotificationBell, ProfileHeader, InfoRow } from '../components/Shared';
 import { ChatWindow } from '../components/Chat';
-import { Search, MapPin, Star, Calendar, MessageCircle, CheckCircle, Camera, Utensils, Home, Sparkles, Filter, Clock, ChevronRight, Heart, Bookmark, FileText, Plus, Users, CreditCard, Trash2, Timer, ArrowRight, Quote, ArrowLeft, ShieldCheck, User as UserIcon, LogOut, Settings, Edit2 } from 'lucide-react';
+import { Search, MapPin, Star, Calendar, MessageCircle, CheckCircle, Camera, Utensils, Home, Sparkles, Filter, Clock, ChevronRight, Heart, Bookmark, FileText, Plus, Users, CreditCard, Trash2, Timer, ArrowRight, Quote, ArrowLeft, ShieldCheck, User as UserIcon, LogOut, Settings, Edit2, Save } from 'lucide-react';
 import { askEventAssistant, generateEventTimeline, suggestVendors } from '../services/geminiService';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -13,10 +13,39 @@ interface ClientViewProps {
   user: User;
 }
 
-export const ClientView: React.FC<ClientViewProps> = ({ user }) => {
+export const ClientView: React.FC<ClientViewProps> = ({ user: initialUser }) => {
+  // Always fetch latest user data from mock DB to ensure updates are reflected
+  const user = MOCK_USERS.find(u => u.id === initialUser.id) || initialUser;
+  
   const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'calendar' | 'ai-planner' | 'profile'>('home');
   const [selectedVendor, setSelectedVendor] = useState<VendorProfile | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0); // Add refresh trigger
+  const [searchFilters, setSearchFilters] = useState<{term: string, category: string}>({ term: '', category: 'all' });
   const { t } = useLanguage();
+
+  const handleTabChange = (tab: any) => {
+      setActiveTab(tab);
+      if(tab === 'home') {
+          setSelectedVendor(null);
+          setRefreshKey(p => p + 1); // Refresh data when returning home
+      }
+      setRefreshKey(p => p + 1); // Refresh on any tab change
+  }
+
+  const handleViewVendor = (vendor: VendorProfile) => {
+      setSelectedVendor(vendor);
+      setActiveTab('home');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const triggerRefresh = () => setRefreshKey(prev => prev + 1);
+
+  const handleLoadSearch = (filters: { term: string; category: string }) => {
+      setSearchFilters(filters);
+      setActiveTab('home');
+      setSelectedVendor(null);
+      setRefreshKey(prev => prev + 1);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans">
@@ -24,23 +53,23 @@ export const ClientView: React.FC<ClientViewProps> = ({ user }) => {
       <div className="bg-white/80 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setActiveTab('home'); setSelectedVendor(null); }}>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => handleTabChange('home')}>
               <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
                  <Sparkles className="w-5 h-5 text-white" />
               </div>
               <span className="text-2xl font-bold text-slate-900 tracking-tight">{t('app_name')}</span>
             </div>
             <div className="hidden md:flex space-x-1 items-center bg-slate-100/50 p-1.5 rounded-full border border-slate-200/50">
-              <NavButton active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setSelectedVendor(null); }}>{t('explore')}</NavButton>
-              <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')}>{t('dashboard')}</NavButton>
-              <NavButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')}>{t('calendar')}</NavButton>
+              <NavButton active={activeTab === 'home'} onClick={() => handleTabChange('home')}>{t('explore')}</NavButton>
+              <NavButton active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')}>{t('dashboard')}</NavButton>
+              <NavButton active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')}>{t('calendar')}</NavButton>
               <button 
-                onClick={() => setActiveTab('ai-planner')}
+                onClick={() => handleTabChange('ai-planner')}
                 className={`px-5 py-2 rounded-full text-sm font-bold transition-all flex items-center ${activeTab === 'ai-planner' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/30' : 'text-slate-600 hover:text-slate-900 hover:bg-white'}`}
               >
                 <Sparkles className="w-4 h-4 mr-2" /> {t('ai_planner')}
               </button>
-               <NavButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')}>{t('profile')}</NavButton>
+               <NavButton active={activeTab === 'profile'} onClick={() => handleTabChange('profile')}>{t('profile')}</NavButton>
             </div>
             <div className="flex items-center gap-4">
                <NotificationBell userId={user.id} />
@@ -52,7 +81,12 @@ export const ClientView: React.FC<ClientViewProps> = ({ user }) => {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'home' && !selectedVendor && (
-          <ServiceSearch onSelectVendor={setSelectedVendor} userId={user.id} />
+          <ServiceSearch 
+            onSelectVendor={setSelectedVendor} 
+            userId={user.id} 
+            key={refreshKey} 
+            initialFilters={searchFilters}
+          />
         )}
 
         {activeTab === 'home' && selectedVendor && (
@@ -60,11 +94,16 @@ export const ClientView: React.FC<ClientViewProps> = ({ user }) => {
         )}
 
         {activeTab === 'dashboard' && (
-          <ClientDashboard userId={user.id} />
+          <ClientDashboard 
+            userId={user.id} 
+            onViewVendor={handleViewVendor} 
+            onLoadSearch={handleLoadSearch}
+            key={refreshKey} 
+          />
         )}
 
         {activeTab === 'calendar' && (
-          <ServiceAvailabilityCalendar onSelectVendor={(v) => { setSelectedVendor(v); setActiveTab('home'); }} />
+          <ServiceAvailabilityCalendar onSelectVendor={(v) => { setSelectedVendor(v); setActiveTab('home'); }} key={refreshKey} />
         )}
 
         {activeTab === 'ai-planner' && (
@@ -72,7 +111,7 @@ export const ClientView: React.FC<ClientViewProps> = ({ user }) => {
         )}
         
         {activeTab === 'profile' && (
-           <ClientProfile user={user} />
+           <ClientProfile user={user} onViewVendor={handleViewVendor} onUpdate={triggerRefresh} key={refreshKey} />
         )}
       </main>
     </div>
@@ -89,19 +128,64 @@ const NavButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
 );
 
 // --- Client Profile Component ---
-const ClientProfile: React.FC<{ user: User }> = ({ user }) => {
+const ClientProfile: React.FC<{ user: User; onViewVendor: (v: VendorProfile) => void; onUpdate?: () => void }> = ({ user, onViewVendor, onUpdate }) => {
     const { t } = useLanguage();
+    const { addToast } = useNotification();
     const [isEditing, setIsEditing] = useState(false);
     
+    // Local state for immediate UI updates
+    const [displayUser, setDisplayUser] = useState(user);
+    
+    // Form state
+    const [formData, setFormData] = useState({
+        name: user.name,
+        phone: user.phone || '',
+        city: user.city || '',
+        bio: user.bio || ''
+    });
+
+    useEffect(() => {
+        setDisplayUser(user);
+        setFormData({
+            name: user.name,
+            phone: user.phone || '',
+            city: user.city || '',
+            bio: user.bio || ''
+        });
+    }, [user]);
+
     // Tabs inside profile
     const [activeSubTab, setActiveSubTab] = useState('info');
+
+    const handleSave = () => {
+        // Update Mock Data
+        updateUser(user.id, {
+            name: formData.name,
+            phone: formData.phone,
+            city: formData.city,
+            bio: formData.bio
+        });
+
+        // Update UI immediately
+        setDisplayUser(prev => ({
+            ...prev,
+            name: formData.name,
+            phone: formData.phone,
+            city: formData.city,
+            bio: formData.bio
+        }));
+
+        setIsEditing(false);
+        addToast(t('saved_successfully'), 'Profile updated successfully', 'success');
+        if (onUpdate) onUpdate();
+    };
     
     return (
         <div className="animate-fade-in max-w-4xl mx-auto">
             <ProfileHeader 
-                name={user.name} 
-                role={user.role} 
-                verificationStatus={user.verificationStatus}
+                name={displayUser.name} 
+                role={displayUser.role} 
+                verificationStatus={displayUser.verificationStatus}
             />
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -133,30 +217,49 @@ const ClientProfile: React.FC<{ user: User }> = ({ user }) => {
                         <Card className="p-6">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-bold text-slate-900">{t('about')}</h3>
-                                <Button size="sm" variant="outline" icon={Edit2} onClick={() => setIsEditing(!isEditing)}>{t('edit_profile')}</Button>
+                                {!isEditing && <Button size="sm" variant="outline" icon={Edit2} onClick={() => setIsEditing(true)}>{t('edit_profile')}</Button>}
                             </div>
                             
                             {isEditing ? (
                                 <div className="space-y-4">
-                                     <Input label={t('full_name')} defaultValue={user.name} />
-                                     <Input label={t('phone')} defaultValue={user.phone} />
-                                     <Input label={t('city')} defaultValue={user.city} />
-                                     <Input label={t('bio')} defaultValue={user.bio} />
+                                     <Input 
+                                        label={t('full_name')} 
+                                        value={formData.name} 
+                                        onChange={e => setFormData({...formData, name: e.target.value})} 
+                                     />
+                                     <Input 
+                                        label={t('phone')} 
+                                        value={formData.phone} 
+                                        onChange={e => setFormData({...formData, phone: e.target.value})} 
+                                     />
+                                     <Input 
+                                        label={t('city')} 
+                                        value={formData.city} 
+                                        onChange={e => setFormData({...formData, city: e.target.value})} 
+                                     />
+                                     <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">{t('bio')}</label>
+                                        <textarea 
+                                            className="block w-full text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all outline-none h-32"
+                                            value={formData.bio}
+                                            onChange={e => setFormData({...formData, bio: e.target.value})}
+                                        />
+                                     </div>
                                      <div className="flex gap-2 justify-end mt-4">
                                          <Button variant="ghost" onClick={() => setIsEditing(false)}>{t('cancel')}</Button>
-                                         <Button onClick={() => setIsEditing(false)}>{t('save')}</Button>
+                                         <Button onClick={handleSave}>{t('save')}</Button>
                                      </div>
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    <InfoRow label={t('full_name')} value={user.name} />
-                                    <InfoRow label={t('email')} value={user.email} />
-                                    <InfoRow label={t('phone')} value={user.phone || '-'} />
-                                    <InfoRow label={t('city')} value={user.city || 'Not set'} />
-                                    <InfoRow label={t('languages_known')} value={user.languagesKnown?.join(', ') || 'English'} />
+                                    <InfoRow label={t('full_name')} value={displayUser.name} />
+                                    <InfoRow label={t('email')} value={displayUser.email} />
+                                    <InfoRow label={t('phone')} value={displayUser.phone || '-'} />
+                                    <InfoRow label={t('city')} value={displayUser.city || 'Not set'} />
+                                    <InfoRow label={t('languages_known')} value={displayUser.languagesKnown?.join(', ') || 'English'} />
                                     <div className="pt-4 mt-2 border-t border-slate-100">
                                         <span className="block text-sm text-slate-500 font-medium mb-2">{t('bio')}</span>
-                                        <p className="text-slate-800 text-sm leading-relaxed">{user.bio}</p>
+                                        <p className="text-slate-800 text-sm leading-relaxed">{displayUser.bio || 'No bio added.'}</p>
                                     </div>
                                 </div>
                             )}
@@ -185,13 +288,13 @@ const ClientProfile: React.FC<{ user: User }> = ({ user }) => {
                     {activeSubTab === 'favorites' && (
                         <div className="space-y-4">
                              {MOCK_VENDORS.filter(v => user.favorites?.includes(v.id)).map(v => (
-                                 <Card key={v.id} className="p-4 flex gap-4 items-center">
+                                 <Card key={v.id} className="p-4 flex gap-4 items-center group cursor-pointer hover:shadow-md transition-all" onClick={() => onViewVendor(v)}>
                                      <img src={v.images[0]} className="w-16 h-16 rounded-lg object-cover" />
                                      <div>
-                                         <h4 className="font-bold">{v.name}</h4>
+                                         <h4 className="font-bold group-hover:text-indigo-600 transition-colors">{v.name}</h4>
                                          <p className="text-xs text-slate-500">{v.location}</p>
                                      </div>
-                                     <Button size="sm" variant="outline" className="ml-auto">View</Button>
+                                     <Button size="sm" variant="outline" className="ml-auto" onClick={(e) => { e.stopPropagation(); onViewVendor(v); }}>View</Button>
                                  </Card>
                              ))}
                              {(!user.favorites || user.favorites.length === 0) && (
@@ -279,11 +382,31 @@ const ServiceAvailabilityCalendar: React.FC<{ onSelectVendor: (v: VendorProfile)
     );
 };
 
-const ServiceSearch: React.FC<{ onSelectVendor: (v: VendorProfile) => void; userId: string }> = ({ onSelectVendor, userId }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [category, setCategory] = useState('all');
+const ServiceSearch: React.FC<{ 
+    onSelectVendor: (v: VendorProfile) => void; 
+    userId: string;
+    initialFilters?: { term: string; category: string };
+}> = ({ onSelectVendor, userId, initialFilters }) => {
+  const [searchTerm, setSearchTerm] = useState(initialFilters?.term || '');
+  const [category, setCategory] = useState(initialFilters?.category || 'all');
   const [priceFilter, setPriceFilter] = useState('all');
   const { t } = useLanguage();
+  const { addToast } = useNotification();
+
+  useEffect(() => {
+      if(initialFilters) {
+          setSearchTerm(initialFilters.term);
+          setCategory(initialFilters.category);
+      }
+  }, [initialFilters]);
+
+  const handleSaveSearch = () => {
+      const name = prompt("Name this search (e.g., 'Wedding Photographers'):");
+      if(name) {
+          saveSearch(userId, name, { term: searchTerm, category, price: priceFilter });
+          addToast(t('saved_successfully'), "Search saved to your dashboard.", "success");
+      }
+  }
 
   const filteredVendors = MOCK_VENDORS.filter(v => {
     const englishTerm = getEnglishSearchTerm(searchTerm);
@@ -346,10 +469,17 @@ const ServiceSearch: React.FC<{ onSelectVendor: (v: VendorProfile) => void; user
                         onChange={(e) => setCategory(e.target.value)}
                     />
                 </div>
-                <div className="w-full md:w-auto">
-                    <Button size="lg" className="w-full md:w-auto rounded-2xl px-8 py-4 shadow-indigo-500/40" onClick={() => {}}>
+                <div className="flex gap-2 w-full md:w-auto">
+                    <Button size="lg" className="flex-1 md:w-auto rounded-2xl px-8 py-4 shadow-indigo-500/40" onClick={() => {}}>
                         {t('explore')}
                     </Button>
+                    <button 
+                        onClick={handleSaveSearch}
+                        className="p-4 rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all shadow-sm"
+                        title={t('save_search')}
+                    >
+                        <Bookmark className="w-5 h-5" />
+                    </button>
                 </div>
              </div>
          </div>
@@ -759,7 +889,15 @@ const VendorDetails: React.FC<{ vendor: VendorProfile; user: any; onBack: () => 
              {/* Quote Modal */}
              <Modal isOpen={isQuoteModal} onClose={() => setIsQuoteModal(false)} title={t('request_quote')}>
                 <div className="space-y-4">
-                    <Input label={t('quote_details')} value={quoteDetails} onChange={e => setQuoteDetails(e.target.value)} placeholder="Describe your requirements..." />
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">{t('quote_details')}</label>
+                        <textarea 
+                            className="block w-full text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all outline-none h-32"
+                            placeholder="Describe your event requirements, budget, and guest count..."
+                            value={quoteDetails} 
+                            onChange={e => setQuoteDetails(e.target.value)}
+                        />
+                    </div>
                     <Button onClick={() => { addQuotation({ clientId: user.id, vendorId: vendor.id, vendorName: vendor.name, details: quoteDetails }); setIsQuoteModal(false); addToast('Quote Sent', t('quote_sent'), 'success'); }} className="w-full">{t('send_request')}</Button>
                 </div>
              </Modal>
@@ -767,11 +905,16 @@ const VendorDetails: React.FC<{ vendor: VendorProfile; user: any; onBack: () => 
     );
 };
 
-const ClientDashboard: React.FC<{ userId: string }> = ({ userId }) => {
+const ClientDashboard: React.FC<{ 
+    userId: string; 
+    onViewVendor: (v: VendorProfile) => void;
+    onLoadSearch: (filters: { term: string; category: string }) => void;
+}> = ({ userId, onViewVendor, onLoadSearch }) => {
+    // Re-fetch user to get latest favorites and searches
+    const user = MOCK_USERS.find(u => u.id === userId);
     const [tab, setTab] = useState('bookings');
     const myBookings = MOCK_BOOKINGS.filter(b => b.clientId === userId).sort((a, b) => b.createdAt - a.createdAt);
     const myQuotes = MOCK_QUOTATIONS.filter(q => q.clientId === userId);
-    const user = MOCK_USERS.find(u => u.id === userId);
     const myFavorites = MOCK_VENDORS.filter(v => user?.favorites?.includes(v.id));
     const nextEvent = myBookings.find(b => b.status === 'confirmed' && new Date(b.date) > new Date());
     const { t } = useLanguage();
@@ -818,7 +961,7 @@ const ClientDashboard: React.FC<{ userId: string }> = ({ userId }) => {
                             { id: 'bookings', label: t('bookings'), icon: Calendar },
                             { id: 'quotes', label: t('quotations'), icon: FileText },
                             { id: 'favorites', label: t('favorites'), icon: Heart },
-                            { id: 'guests', label: t('guest_list'), icon: Users },
+                            { id: 'saved_searches', label: t('saved_searches'), icon: Bookmark },
                         ]} 
                         activeTab={tab} 
                         onChange={setTab} 
@@ -851,86 +994,81 @@ const ClientDashboard: React.FC<{ userId: string }> = ({ userId }) => {
                         </div>
                     )}
 
-                    {tab === 'favorites' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {myFavorites.map(v => (
-                                <div key={v.id} className="flex gap-4 p-4 border rounded-2xl hover:shadow-md cursor-pointer transition-all bg-white">
-                                    <img src={v.images[0]} className="w-24 h-24 rounded-xl object-cover" />
-                                    <div>
-                                        <h4 className="font-bold text-slate-900">{v.name}</h4>
-                                        <p className="text-sm text-slate-500 mb-2">{v.location}</p>
-                                        <Badge color="blue">{t(v.role)}</Badge>
+                    {tab === 'quotes' && (
+                        <div className="space-y-4">
+                            {myQuotes.length === 0 && <div className="text-center p-8 text-slate-400">No quotations found.</div>}
+                            {myQuotes.map(q => (
+                                <div key={q.id} className="p-5 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-all">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h4 className="font-bold text-slate-900">{q.vendorName}</h4>
+                                        <Badge color={q.status === 'replied' ? 'green' : 'yellow'}>{q.status}</Badge>
                                     </div>
+                                    <p className="text-sm text-slate-600 mb-3 italic">"{q.details}"</p>
+                                    {q.response && (
+                                        <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                                            <p className="text-sm font-bold text-indigo-900 mb-1">Response:</p>
+                                            <p className="text-sm text-indigo-800">{q.response}</p>
+                                            {q.estimatedAmount && <p className="text-sm font-bold mt-2 text-indigo-700">Estimate: ₹{q.estimatedAmount}</p>}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
                     )}
-                    
-                    {tab === 'guests' && <GuestManager clientId={userId} />}
+
+                    {tab === 'favorites' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {myFavorites.map(v => (
+                                <div key={v.id} onClick={() => onViewVendor(v)} className="flex gap-4 p-4 border border-slate-200 rounded-2xl hover:shadow-lg hover:border-indigo-200 cursor-pointer transition-all bg-white group">
+                                    <img src={v.images[0]} className="w-20 h-20 rounded-xl object-cover" />
+                                    <div>
+                                        <h4 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">{v.name}</h4>
+                                        <p className="text-xs text-slate-500 mb-2 flex items-center"><MapPin className="w-3 h-3 mr-1" />{v.location}</p>
+                                        <Badge color="blue" className="text-[10px] py-0">{t(v.role)}</Badge>
+                                    </div>
+                                </div>
+                            ))}
+                             {(!user?.favorites || user.favorites.length === 0) && (
+                                 <div className="col-span-full text-center p-12 text-slate-400">No favorites yet.</div>
+                             )}
+                        </div>
+                    )}
+
+                    {tab === 'saved_searches' && (
+                         <div className="space-y-4">
+                            {(!user?.savedSearches || user.savedSearches.length === 0) ? (
+                                <div className="text-center p-12 text-slate-400 border-2 border-dashed border-slate-100 rounded-2xl">
+                                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                    <p>No saved searches yet.</p>
+                                    <Button variant="outline" className="mt-4" onClick={() => onLoadSearch({ term: '', category: 'all' })}>Start Exploring</Button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {user.savedSearches.map(s => (
+                                        <div 
+                                            key={s.id} 
+                                            onClick={() => onLoadSearch({ term: s.criteria.term, category: s.criteria.category })}
+                                            className="p-5 border border-slate-200 rounded-2xl hover:bg-slate-50 hover:border-indigo-300 cursor-pointer transition-all group relative bg-white"
+                                        >
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h4 className="font-bold text-slate-900 group-hover:text-indigo-600">{s.name}</h4>
+                                                <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {s.criteria.term && <Badge color="gray" className="text-xs">{s.criteria.term}</Badge>}
+                                                <Badge color="blue" className="text-xs">{t(s.criteria.category)}</Badge>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                         </div>
+                    )}
                 </div>
              </div>
         </div>
     );
 };
-
-const GuestManager: React.FC<{ clientId: string }> = ({ clientId }) => {
-    const { t } = useLanguage();
-    const { addToast } = useNotification();
-    const [newGuest, setNewGuest] = useState('');
-    const [count, setCount] = useState(1);
-    const [refresh, setRefresh] = useState(0);
-
-    const myGuests = MOCK_GUESTS.filter(g => g.clientId === clientId);
-
-    const handleAdd = () => {
-        if(!newGuest) return;
-        addGuest(clientId, newGuest, count);
-        addToast('Guest Added', `${newGuest} added to the list.`, 'success');
-        setNewGuest('');
-        setCount(1);
-        setRefresh(p => p + 1);
-    }
-
-    return (
-        <div className="space-y-6">
-            <div className="bg-indigo-50 p-6 rounded-2xl flex flex-col md:flex-row gap-4 items-end">
-                <Input className="flex-1 mb-0 bg-white" label={t('guest_name')} value={newGuest} onChange={e => setNewGuest(e.target.value)} placeholder="Enter name" />
-                <div className="w-32">
-                     <Input className="mb-0 bg-white" label={t('plus_ones')} type="number" min="1" value={count} onChange={e => setCount(parseInt(e.target.value))} />
-                </div>
-                <Button onClick={handleAdd} icon={Plus} className="h-[46px]">{t('add_guest')}</Button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3">
-                {myGuests.map(g => (
-                    <div key={g.id} className="flex justify-between items-center p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold">
-                                {g.name.charAt(0)}
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-slate-900">{g.name}</h4>
-                                <p className="text-xs text-slate-500 font-medium">Total Party: {g.count}</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <select 
-                                className="text-xs font-bold bg-slate-50 border-0 rounded-lg py-2 px-3 focus:ring-0 text-slate-600"
-                                value={g.status}
-                                onChange={e => { updateGuestStatus(g.id, e.target.value as any); setRefresh(p => p + 1); }}
-                            >
-                                <option value="invited">Invited</option>
-                                <option value="confirmed">Confirmed</option>
-                                <option value="declined">Declined</option>
-                            </select>
-                            <button onClick={() => { deleteGuest(g.id); setRefresh(p => p + 1); }} className="text-slate-400 hover:text-red-500 p-2 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    )
-}
 
 const AIPlanner: React.FC = () => {
     const [messages, setMessages] = useState<{role: 'user' | 'ai', text: string}[]>([{role: 'ai', text: 'Hello! I am your Event Genius. Ask me to plan a timeline, suggest vendors for a budget, or give party ideas.'}]);
