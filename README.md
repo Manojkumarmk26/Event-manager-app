@@ -1,20 +1,32 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 📅 Event Manager App — All-in-One Event Planning Platform
 
-# Run and deploy your AI Studio app
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev/)
+[![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 
-This contains everything you need to run your app locally.
+The **Event Manager App** is a multi-featured web platform designed to streamline event planning, vendor booking, guest coordination, and budgeting. Built with **React** and **TypeScript**, it features multi-language support (Tamil, Telugu, Malayalam, English).
 
-View your app in AI Studio: https://ai.studio/apps/drive/1UY2LwD8UJHnX6FAR6raHH9QoQJscq5lv
+---
 
-## Run Locally
+## ✨ Features
 
-**Prerequisites:**  Node.js
+- 🎪 **Comprehensive Event Booking**: Manage weddings, corporate events, and parties.
+- 🌐 **Multi-Language Support**: English, Tamil (தமிழ்), Telugu (తెలుగు), Malayalam (മലയാളം).
+- 👥 **Vendor Coordination**: Connect with caterers, photographers, and venue providers.
+- 📊 **Budget & Guest Tracking**: Interactive dashboards to monitor event expenses.
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🛠️ Getting Started
+
+```bash
+# Clone the repository
+git clone https://github.com/Manojkumarmk26/Event-manager-app.git
+cd Event-manager-app
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
